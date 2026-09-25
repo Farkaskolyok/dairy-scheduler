@@ -94,8 +94,8 @@ function Box({ label, value, warn }: { label: string; value: string; warn?: bool
   );
 }
 
-export function Preflight({ state, y, m, prevOk, prevNeeded, leaveOk, onGenerate, label }: {
-  state: AppState; y: number; m: number; prevOk: boolean; prevNeeded: boolean; leaveOk: boolean; onGenerate: () => void; label: string;
+export function Preflight({ state, y, m, prevOk, prevNeeded, leaveOk, onGenerate, label, warnText }: {
+  state: AppState; y: number; m: number; prevOk: boolean; prevNeeded: boolean; leaveOk: boolean; onGenerate: () => void; label: string; warnText: string;
 }) {
   const reqOk = (["kesz", "tej", "mikro"] as const).every((g) => state.config.reqs.some((r) => r.group === g && r.count > 0));
   const confOk = state.config.conflicts.length > 0;
@@ -117,7 +117,7 @@ export function Preflight({ state, y, m, prevOk, prevNeeded, leaveOk, onGenerate
           </ul>
           {prevNeeded && !prevOk && (
             <p className="mt-2 rounded-lg bg-warn p-2 text-sm text-warn-foreground">
-              A(z) {MONTHS[m]}i beosztás elkészíthető, de a kéthavi munkaidőkeret és az igazságosság nem számítható pontosan az előző havi adatok nélkül.
+              {warnText}
             </p>
           )}
         </div>
