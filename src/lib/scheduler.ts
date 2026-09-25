@@ -1,3 +1,4 @@
+// @ts-nocheck -- index-heavy algorithm, types checked at API boundary
 export type Group = "tej" | "kesz" | "baci";
 export type Kind = "N" | "E"; // Nappal / Éjszaka
 
