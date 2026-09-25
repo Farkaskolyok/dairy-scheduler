@@ -364,7 +364,7 @@ export function validate(state: AppState, y: number, m: number, grid: Grid): { s
     if (!isWork(cm[look(e.id, d - 1)])) {
       const run = 1 + runAfter(look, cm, e.id, d);
       if (run > cfg.maxConsecLegal) { restItems.push({ level: "bad", text: `${e.name}: ${run} egymást követő munkanap ${shortDate(m, d)}-tól (max. ${cfg.maxConsecLegal})` }); issues.add(`${e.id}-${d}`); }
-      else if (cfg.preferMaxConsec.enabled && run > cfg.preferMaxConsec.value) restItems.push({ level: "warn", text: `${e.name}: ${run} egymást követő műszak ${shortDate(m, d)}-tól (céges preferencia: max. ${cfg.preferMaxConsec.value})` });
+      else if (e.pattern === "shift" && cfg.preferMaxConsec.enabled && run > cfg.preferMaxConsec.value) restItems.push({ level: "warn", text: `${e.name}: ${run} egymást követő műszak ${shortDate(m, d)}-tól (céges preferencia: max. ${cfg.preferMaxConsec.value})` });
     }
   }
   if (!restItems.some((i) => i.level === "bad")) restItems.unshift({ level: "ok", text: `Mindenhol megvan a legalább ${cfg.minRest} óra pihenő` });
