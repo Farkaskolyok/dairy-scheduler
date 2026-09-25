@@ -72,14 +72,20 @@ function Index() {
     <div className="dots min-h-screen">
       <div className="mx-auto max-w-[1500px] px-4 py-8">
         <header className="mb-6 flex flex-wrap items-end justify-between gap-4 print:hidden">
-          <div>
-            <div className="flex items-center gap-2">
-              {["bg-primary", "bg-secondary", "bg-accent"].map((c) => (
-                <span key={c} className={`h-4 w-4 rounded-full ${c}`} />
-              ))}
+          <div className="flex items-center gap-4">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary" aria-hidden>
+              <span className="grid grid-cols-3 gap-1">
+                {Array.from({ length: 9 }).map((_, i) => (
+                  <span key={i} className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />
+                ))}
+              </span>
+            </span>
+            <div>
+              <h1 className="font-display text-3xl font-black tracking-tight text-foreground md:text-4xl">
+                PÖTTYÖS <span className="text-primary">BEOSZTÁS</span>
+              </h1>
+              <p className="text-sm text-muted-foreground">Laboráns műszakbeosztás – igazságosan, a Munka Törvénykönyve szerint.</p>
             </div>
-            <h1 className="font-display mt-2 text-4xl font-bold text-foreground md:text-5xl">Pötty Beosztás</h1>
-            <p className="text-muted-foreground">Laboráns műszakbeosztás – igazságosan, a Munka Törvénykönyve szerint.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <select value={month} onChange={(e) => setMonth(+e.target.value)} className="pill">
