@@ -56,9 +56,9 @@ function Index() {
   const exportCsv = () => {
     const rows = [["Csoport", "Név", ...days.map(String), "Óra", "Keret", "Túlóra"]];
     for (const e of emps) {
-      const st = res.stats[e.id];
+      const st = res.stats[e.id]!;
       rows.push([GROUP_LABEL[e.group], e.name, ...days.map((d) => {
-        const c = res.grid[e.id][d]; return c ? (c.kind === "N" ? "N" : c.kind === "E" ? "É" : "SZ") : "";
+        const c = res.grid[e.id]?.[d]; return c ? (c.kind === "N" ? "N" : c.kind === "E" ? "É" : "SZ") : "";
       }), String(st.hours), String(target), String(Math.max(0, st.hours - target))]);
     }
     const blob = new Blob(["\uFEFF" + rows.map((r) => r.join(";")).join("\n")], { type: "text/csv" });
@@ -200,13 +200,13 @@ function GroupRows({ g, emps, days, res, target, year, month }: {
     <>
       <tr><td colSpan={days.length + 6} className="font-display bg-muted px-2 py-1 font-bold">{GROUP_LABEL[g]}</td></tr>
       {emps.map((e) => {
-        const st = res.stats[e.id];
+        const st = res.stats[e.id]!;
         const over = st.hours - target;
         return (
           <tr key={e.id}>
             <td className="sticky left-0 z-10 bg-card p-2 font-semibold whitespace-nowrap">{e.name}</td>
             {days.map((d) => {
-              const c = res.grid[e.id][d];
+              const c = res.grid[e.id]?.[d];
               const dow = new Date(year, month, d).getDay();
               const off = dow === 0 || dow === 6 || isHoliday(year, month, d);
               return (
