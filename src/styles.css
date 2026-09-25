@@ -51,6 +51,14 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-weekend: var(--weekend);
+  --color-holiday: var(--holiday);
+  --color-ok: var(--ok);
+  --color-ok-foreground: var(--ok-fg);
+  --color-warn: var(--warn);
+  --color-warn-foreground: var(--warn-fg);
+  --color-bad: var(--bad);
+  --color-bad-foreground: var(--bad-fg);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -86,6 +94,30 @@
   --shift-day: oklch(0.955 0.02 20);
   --shift-night: oklch(0.56 0.225 25);
   --shift-leave: oklch(0.85 0.09 160);
+  --code-day: oklch(0.93 0.06 150);
+  --code-day-fg: oklch(0.3 0.08 150);
+  --code-night: oklch(0.36 0.12 285);
+  --code-night-fg: oklch(0.98 0.01 285);
+  --code-short: oklch(0.92 0.05 200);
+  --code-short-fg: oklch(0.32 0.07 210);
+  --code-sz: oklch(0.88 0.13 80);
+  --code-sz-fg: oklch(0.36 0.09 60);
+  --code-b: oklch(0.87 0.08 0);
+  --code-b-fg: oklch(0.4 0.15 10);
+  --code-x: oklch(0.88 0 0);
+  --code-x-fg: oklch(0.35 0 0);
+  --code-ho: oklch(0.9 0.05 300);
+  --code-ho-fg: oklch(0.38 0.1 300);
+  --code-other: oklch(0.93 0.02 250);
+  --code-other-fg: oklch(0.35 0.03 250);
+  --weekend: oklch(0.97 0.006 250);
+  --holiday: oklch(0.93 0.05 25);
+  --ok: oklch(0.9 0.08 150);
+  --ok-fg: oklch(0.35 0.1 150);
+  --warn: oklch(0.92 0.1 90);
+  --warn-fg: oklch(0.42 0.1 70);
+  --bad: oklch(0.88 0.09 20);
+  --bad-fg: oklch(0.45 0.18 25);
   --shadow-soft: 0 1px 2px oklch(0.2 0 0 / 0.04), 0 4px 16px oklch(0.2 0 0 / 0.05);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
@@ -162,5 +194,14 @@
   .shift-n { background: var(--shift-day); color: var(--foreground); }
   .shift-e { background: var(--shift-night); color: var(--card); }
   .shift-sz { background: var(--shift-leave); color: var(--foreground); }
+  .shift-code { display:inline-flex; align-items:center; justify-content:center; min-width:1.9rem; height:1.7rem; padding:0 .25rem; border-radius:.5rem; font-size:.7rem; font-weight:800; }
+  .code-day { background: var(--code-day); color: var(--code-day-fg); }
+  .code-night { background: var(--code-night); color: var(--code-night-fg); }
+  .code-short { background: var(--code-short); color: var(--code-short-fg); }
+  .code-sz { background: var(--code-sz); color: var(--code-sz-fg); }
+  .code-b { background: var(--code-b); color: var(--code-b-fg); }
+  .code-x { background: var(--code-x); color: var(--code-x-fg); }
+  .code-ho { background: var(--code-ho); color: var(--code-ho-fg); }
+  .code-other { background: var(--code-other); color: var(--code-other-fg); }
   @media print { .dots { background-image: none; } .card-dot { box-shadow:none; } }
 }
