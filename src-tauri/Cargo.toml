@@ -1,0 +1,24 @@
+[package]
+name = "pottyos-beosztas"
+version = "1.0.0"
+description = "Offline laboratory shift scheduler"
+edition = "2021"
+rust-version = "1.77.2"
+publish = false
+
+[lib]
+name = "pottyos_beosztas_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

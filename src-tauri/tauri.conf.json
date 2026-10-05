@@ -1,0 +1,43 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Pöttyös Beosztás",
+  "version": "1.0.0",
+  "identifier": "hu.pottyos.beosztas",
+  "build": {
+    "beforeDevCommand": "bun run dev:desktop",
+    "beforeBuildCommand": "bun run build:desktop",
+    "devUrl": "http://127.0.0.1:1420",
+    "frontendDist": "../dist-desktop"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Pöttyös Beosztás",
+        "width": 1440,
+        "height": 920,
+        "minWidth": 900,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/icon.png", "icons/icon.ico"],
+    "resources": ["../public/fonts/OFL.txt"],
+    "shortDescription": "Offline laboráns műszakbeosztó",
+    "category": "Productivity",
+    "windows": {
+      "webviewInstallMode": { "type": "offlineInstaller", "silent": true },
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": true,
+        "languages": ["Hungarian", "English"]
+      }
+    }
+  }
+}

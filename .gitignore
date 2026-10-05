@@ -11,6 +11,10 @@ node_modules
 .cache/
 dist
 dist-ssr
+dist-desktop/
+src-tauri/target/
+src-tauri/gen/
+releases/
 .output
 .vinxi
 .tanstack/**
