@@ -1,35 +1,48 @@
-# Shift Maestro
+# Pöttyös Beosztás
 
-szeretnek egy uj beosztas generalo platformot pöttyös deisgnban a cel egyszerusiteni a beosztas elkesziteset : Tejfeldolgozó gyárban a laboránsok beosztása. 3 gyártósor van. Éjszaka hétvége ünnepnapok igazságos beosztása, 2 havi kötelező munkaórakeret figyelembevételével, szabi, túlóra, éjszaka, előre egy hónapra ki kell adni a beosztásokat. Péntek szombat vasárnap 1-1 fő. 
+Laboráns műszakbeosztó tejfeldolgozó üzemeknek. Havi beosztástervezés kéthavi
+munkaidőkerettel, távollétek és dolgozói összeférhetetlenségek kezelésével,
+létszám- és szabályellenőrzéssel, Excel-importtal, CSV-exporttal és nyomtatással.
 
-Tejátvétel 2 hölgy van és váltják egymást csak nappal h-v 12 órában 1 fő. 
+## Local use
 
-7 Készterméklaboráns van. Kriszta és Tünde nem akar együtt lenni.  Hétfőtől péntekig nappal és éjszaka is 2-2 ember 12-12 órások. Szombaton nappal és éjszaka is 1-1 fő. Vasárnap nappal 0 éjszaka 1. 
-
-Bacisok csak nappal 12 órára jönnek 3 an vannak H-P. Szombaton 8 óra, vasárnap 4 óra. 
-
-
-OKTÓBERI BEOSZTÁST LEGENERÁLNI. Munka törvénykönyv beosztási szabály szerint
-
-This project was built with [Lovable](https://lovable.dev).
-
-**Live app**: https://dairy-scheduler.lovable.app
-
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/97577330-4dba-4414-8455-c0e31ea65b37).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+Requires Node.js 22.12 or later and Bun for the locked dependency installation.
+The initial installation needs internet access:
 
 ```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
+bun install --frozen-lockfile
+bun run build
+bun run start
 ```
+
+Open http://127.0.0.1:3000. After installing and building, the application runs
+without internet access while its local server is running. The production
+server binds only to this computer. Keep the complete `.output` directory when
+copying a build to another computer with Node.js; run it with `scripts/start.mjs`
+in the same directory layout.
+
+For development:
+
+```sh
+bun run dev
+```
+
+The equivalent npm scripts also work after dependencies have been installed.
+
+## Data and assets
+
+Schedules, employees, settings, and drafts are saved in the browser's
+`localStorage` under `potty-beosztas-v2`. Scheduling and Excel parsing happen
+in the browser. CSV export creates a local download. Fonts, icons, styles, and
+scripts are served locally; the application has no remote reporting hooks or
+remote database connections.
+
+Figtree is distributed under the SIL Open Font License; see `public/fonts/OFL.txt`.
+
+Browser storage belongs to a browser profile and origin. The hosted app's data
+does not automatically appear at the local address. Keep using the same local
+address and port to retain local data, and do not clear the browser's site data.
+
+## Stack
+
+React, TanStack Start and Router, Vite, Nitro, Tailwind CSS, and SheetJS.
