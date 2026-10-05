@@ -15,7 +15,8 @@ export function ImportDialog({ state, onApply, onClose }: { state: AppState; onA
       if (!res.length) setErr("Nem találtam felismerhető beosztás-munkalapot (név + napok fejléc).");
       setSheets(res);
     } catch (e) {
-      setErr(`A fájl nem olvasható: ${e instanceof Error ? e.message : String(e)}`);
+      console.error(e);
+      setErr("A fájl nem olvasható. Ellenőrizd, hogy érvényes, sértetlen és nem jelszóval védett .xlsx fájlt választottál.");
     }
   };
   return (

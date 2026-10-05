@@ -1,4 +1,3 @@
-// @ts-nocheck -- sheet cell access is dynamic
 import * as XLSX from "xlsx";
 import type { AppState, Group } from "./types";
 import { MONTHS, daysIn, monthKey } from "./calendar";

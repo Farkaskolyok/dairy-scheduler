@@ -1,4 +1,3 @@
-// @ts-nocheck -- index-heavy algorithm, types checked at API boundary
 import type { AppState, CodeDef, Config, DayType, Draft, Employee, Grid, Group, Kind, MonthData } from "./types";
 import { autoMonthTarget, daysIn, dowOf, isHoliday, monthKey, nextMonth, parseYM, prevMonth } from "./calendar";
 import { GROUP_LABEL } from "./defaults";

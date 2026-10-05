@@ -23,7 +23,7 @@ export function describeError(error: unknown): string {
       parts.push(typeof current === "string" ? current : safeStringify(current));
       break;
     }
-    const label = depth === 0 ? "" : "caused by: ";
+    const label = depth === 0 ? "" : "Kiváltó ok: ";
     const status = describeStatus(current);
     parts.push(`${label}${current.stack ?? `${current.name}: ${current.message}`}${status}`);
     current = current.cause;
@@ -34,7 +34,7 @@ export function describeError(error: unknown): string {
 function describeStatus(error: Error): string {
   const { status, statusCode } = error as { status?: unknown; statusCode?: unknown };
   const value = status ?? statusCode;
-  return typeof value === "number" ? ` (status ${value})` : "";
+  return typeof value === "number" ? ` (állapotkód: ${value})` : "";
 }
 
 function safeStringify(value: unknown): string {
