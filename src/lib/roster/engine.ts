@@ -501,7 +501,7 @@ export interface Section { id: string; title: string; level: Level; items: { lev
 const worst = (items: { level: Level }[]): Level => (items.some((i) => i.level === "bad") ? "bad" : items.some((i) => i.level === "warn") ? "warn" : "ok");
 const shortDate = (m: number, d: number) => `${m + 1}.${String(d).padStart(2, "0")}.`;
 
-export function validate(state: AppState, y: number, m: number, grid: Grid): { sections: Section[]; issues: Set<string> } {
+export function validate(state: AppState, y: number, m: number, grid: Grid, draft?: Draft | null): { sections: Section[]; issues: Set<string> } {
   const cfg = state.config, cm = codeMap(cfg), n = daysIn(y, m);
   const emps = state.employees.filter((e) => e.active);
   const issues = new Set<string>();
@@ -554,15 +554,41 @@ export function validate(state: AppState, y: number, m: number, grid: Grid): { s
 
   const absItems = [];
   const md = state.months[monthKey(y, m)];
+  const dr = draft === undefined ? activeDraft(md) : draft;
+  const [py0, pm0] = prevMonth(y, m);
+  const dateOf = (d: number) => (d < 1 ? shortDate(pm0, daysIn(py0, pm0) + d) : d > n ? shortDate(nextMonth(y, m)[1], d - n) : shortDate(m, d));
   let absDays = 0;
   for (const e of emps) {
     const a = md?.absences[e.id] ?? {};
     absDays += Object.keys(a).length;
-    const draftCells = activeDraft(md)?.cells[e.id] ?? {};
-    for (const d of Object.keys(a)) if (isWork(cm[draftCells[d]])) absItems.push({ level: "bad", text: `${e.name}, ${shortDate(m, +d)}: távollét napjára műszak volt tervezve (a távollét érvényes)` });
+    const draftCells = dr?.cells[e.id] ?? {};
+    for (const d of Object.keys(a)) if (isWork(cm[draftCells[d]])) { issues.add(`${e.id}-${d}`); absItems.push({ level: "bad", text: `${e.name}, ${shortDate(m, +d)}: távollét napjára műszak volt tervezve (a távollét érvényes)` }); }
     if (fs[e.id].remainingLeave < 0) absItems.push({ level: "warn", text: `${e.name}: ${fs[e.id].remainingLeave} nap – több szabadság, mint a keret` });
+    // éjszaka tiltó távollét előtt (a hónap előtti utolsó naptól, hónaphatáron át)
+    for (let d = 0; d <= n; d++) {
+      const code = look(e.id, d);
+      const pn = prevNightIssue(look, cm, e.id, d, code);
+      if (!pn) continue;
+      if (d >= 1) issues.add(`${e.id}-${d}`);
+      if (d + 1 <= n) issues.add(`${e.id}-${d + 1}`);
+      absItems.push({ level: "bad", text: `${e.name}, ${dateOf(d)} 19:00 éjszaka: ${pn} (${dateOf(d + 1)}). A műszak nem lett törölve – javítsd kézzel.` });
+    }
   }
-  absItems.unshift({ level: "ok", text: `${absDays} távollét-nap rögzítve, ezekre nincs műszak beosztva` });
+  if (!absItems.some((i) => i.level === "bad")) absItems.unshift({ level: "ok", text: `${absDays} távollét-nap rögzítve, ezekre és az előttük lévő tiltott éjszakákra nincs műszak` });
+
+  // egyéni beosztási szabályok
+  const ruleItems = [];
+  let ruleCount = 0;
+  for (const e of emps) {
+    const rs = (e.restrictions ?? []).filter((r) => r.enabled);
+    ruleCount += rs.length;
+    if (!rs.length) continue;
+    for (let d = 1; d <= n; d++) {
+      const ri = restrictionIssue(e, y, m, d, grid[e.id]?.[d], cm);
+      if (ri) { issues.add(`${e.id}-${d}`); ruleItems.push({ level: "bad", text: `${e.name}, ${shortDate(m, d)}: ${ri}` }); }
+    }
+  }
+  if (!ruleItems.length) ruleItems.push({ level: "ok", text: ruleCount ? `Egyéni beosztási szabályok betartva (${ruleCount} aktív szabály)` : "Nincs egyéni beosztási szabály megadva" });
 
   const frameItems = [];
   for (const e of emps) {
@@ -582,19 +608,47 @@ export function validate(state: AppState, y: number, m: number, grid: Grid): { s
       const mx = vals.reduce((a, b) => (b.v > a.v ? b : a)), mn = vals.reduce((a, b) => (b.v < a.v ? b : a));
       if (mx.v - mn.v > lim) fairItems.push({ level: "warn", text: `${GROUP_LABEL[g]} – ${label}: ${mn.e.name} ${mn.v}, ${mx.e.name} ${mx.v} (kéthavi)` });
     };
-    if (groupKinds(cfg, g).has("E")) spread((s) => s.night, "éjszakák", 3);
+    if (groupKinds(cfg, g).has("E")) {
+      // elérhetőséghez igazított éjszaka-igazságosság
+      const elig = Object.fromEntries(ge.map((e) => [e.id, nightEligibleCum(state, y, m, e)]));
+      const sumE = ge.reduce((a, e) => a + elig[e.id], 0), maxE = Math.max(...ge.map((e) => elig[e.id]));
+      const total = ge.reduce((a, e) => a + fs[e.id].cum.night, 0);
+      for (const e of ge) {
+        const v = fs[e.id].cum.night, ex = expectedShare(total, elig[e.id], sumE), tol = Math.max(2.5, ex * 0.25);
+        const exS = ex.toFixed(1).replace(".", ",");
+        if (elig[e.id] === 0) { fairItems.push({ level: "ok", text: `${e.name}: ${v} éjszaka – indokolt, nem volt éjszakára beosztható napja (távollét / egyéni szabály)` }); continue; }
+        if (v - ex > tol) fairItems.push({ level: "warn", text: `${e.name}: ${v} éjszaka – kiegyensúlyozatlan, több a várhatónál (~${exS}, elérhetősége alapján, kéthavi)` });
+        else if (ex - v > tol || (v === 0 && ex >= 1.5)) fairItems.push({ level: "warn", text: `${e.name}: ${v} éjszaka – kiegyensúlyozatlan, kevesebb a várhatónál (~${exS}, elérhetősége alapján, kéthavi)` });
+        else if (elig[e.id] < maxE * 0.7) fairItems.push({ level: "ok", text: `${e.name}: ${v} éjszaka – a kevesebb éjszaka indokolt: csak ${elig[e.id]} napon volt éjszakára beosztható (a csoportban legfeljebb ${maxE})` });
+      }
+    }
     spread((s) => s.sat, "szombatok", 2);
     spread((s) => s.sun, "vasárnapok", 2);
     spread((s) => s.hol, "ünnepnapok", 1);
   }
-  if (!fairItems.length) fairItems.push({ level: "ok", text: "Éjszakák, hétvégék és ünnepnapok kiegyensúlyozottak (kéthavi alapon)" });
+  if (!fairItems.some((i) => i.level !== "ok")) fairItems.unshift({ level: "ok", text: "Éjszakák (elérhetőség szerint), hétvégék és ünnepnapok kiegyensúlyozottak (kéthavi alapon)" });
+
+  // zárolt kézi műszakok – soha nem törlődnek, de a szabálysértést jelezzük
+  const lockItems = [];
+  const lk = lockedCells(dr);
+  let lockN = 0;
+  for (const [id, row] of Object.entries(lk)) for (const ds of Object.keys(row)) {
+    lockN++;
+    if (issues.has(`${id}-${ds}`)) {
+      const nm = state.employees.find((e) => e.id === id)?.name ?? "?";
+      lockItems.push({ level: "bad", text: `${nm}, ${shortDate(m, +ds)}: a kézzel zárolt műszak szabályt sért (részletek a többi pontban). Nem töröltük – javítsd vagy oldd fel a zárolást.` });
+    }
+  }
+  if (!lockItems.length) lockItems.push({ level: "ok", text: lockN ? `${lockN} kézzel zárolt műszak – mind szabályos` : "Nincs kézzel zárolt műszak" });
+  else if (covItems.some((i) => i.level === "bad")) lockItems.push({ level: "warn", text: "A zárolt műszakok szűkíthetik a lehetőségeket – a lefedetlen napok egy része ezek miatt is lehet." });
 
   const mk = (id, title, items): Section => ({ id, title, items, level: worst(items) });
   return {
     issues,
     sections: [
       mk("cov", "Lefedettség", covItems), mk("time", "Munkaidő", timeItems), mk("rest", "Pihenőidő", restItems),
-      mk("conf", "Konfliktus", confItems), mk("abs", "Szabadság / távollét", absItems), mk("frame", "Kéthavi keret", frameItems),
+      mk("conf", "Konfliktus", confItems), mk("abs", "Szabadság / távollét", absItems), mk("rules", "Egyéni szabályok", ruleItems),
+      mk("lock", "Zárolt kézi műszakok", lockItems), mk("frame", "Kéthavi keret", frameItems),
       mk("fair", "Igazságosság", fairItems),
     ],
   };
