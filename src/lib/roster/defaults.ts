@@ -1,4 +1,4 @@
-import type { AppState, CodeDef, Config, Grid, ReqRow, RuleType } from "./types";
+import type { AppState, CodeDef, Config, Grid, ReqRow, Restriction, RuleType } from "./types";
 import { SEED_EMPLOYEES, SEED_OCT_2026_ABSENCES, SEED_SEPT_2026 } from "./seed";
 
 export const GROUP_LABEL = {
@@ -86,7 +86,7 @@ export function initialState(): AppState {
   for (const [id, row] of Object.entries(SEED_OCT_2026_ABSENCES)) {
     octAbs[id] = Object.fromEntries(Object.entries(row).map(([d, c]) => [Number(d), c]));
   }
-  return {
+  return migrate({
     version: 2,
     employees: SEED_EMPLOYEES.map((e) => ({ ...e })),
     config: defaultConfig(),
@@ -98,5 +98,35 @@ export function initialState(): AppState {
       },
       "2026-10": { absences: octAbs, drafts: [], activeId: null },
     },
-  };
+  });
+}
+
+/** Ismert állandó egyéni szabályok – csak akkor kerülnek be, ha a dolgozónak még nincs szabálylistája */
+const DEFAULT_RESTRICTIONS: Record<string, Omit<Restriction, "id">[]> = {
+  "szalacsi zsófia": [
+    { dow: 6, kind: "E", enabled: true }, // szombat éjszaka
+    { dow: 0, kind: "D", enabled: true }, // vasárnap nappal
+  ],
+};
+
+/** Visszafelé kompatibilis, egyszeri adatbővítés: semmit nem töröl és nem ír felül. */
+export function migrate(s: AppState): AppState {
+  const done = new Set(s.migrations ?? []);
+  let codes = s.config.codes;
+  let employees = s.employees;
+  if (!done.has("codes-o4-o8")) {
+    const have = new Set(codes.map((c) => c.code));
+    const add = EXTRA_CODES.filter((c) => !have.has(c.code)).map((c) => ({ ...c }));
+    if (add.length) codes = [...codes, ...add];
+    done.add("codes-o4-o8");
+  }
+  if (!done.has("restrictions-v1")) {
+    employees = employees.map((e) => {
+      const def = DEFAULT_RESTRICTIONS[e.name.trim().toLowerCase()];
+      if (!def || e.restrictions !== undefined) return e;
+      return { ...e, restrictions: def.map((r, i) => ({ ...r, id: `${e.id}-r${i + 1}` })) };
+    });
+    done.add("restrictions-v1");
+  }
+  return { ...s, employees, config: { ...s.config, codes }, migrations: [...done] };
 }
