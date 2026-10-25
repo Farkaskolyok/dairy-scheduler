@@ -10,6 +10,19 @@ export const GROUPS = ["kesz", "tej", "mikro"] as const;
 
 export const COLOR_KEYS = ["day", "night", "short", "sz", "b", "x", "ho", "other"] as const;
 
+/** Később bevezetett távolléti kódok – régi mentésbe egyszer, ha hiányoznak, bekerülnek */
+export const EXTRA_CODES: CodeDef[] = [
+  { code: "O4", name: "O4 – 4 órás távollét", category: "other", hours: 4, start: 0, countsWork: false, countsAccounted: true, blocks: true, blocksPreviousNight: true, color: "ho", description: "4 órás távollét – elszámolását a rendszergazda állítsa be" },
+  { code: "O8", name: "O8 – 8 órás távollét", category: "other", hours: 8, start: 0, countsWork: false, countsAccounted: true, blocks: true, blocksPreviousNight: true, color: "ho", description: "8 órás távollét – elszámolását a rendszergazda állítsa be" },
+];
+
+/** Ezek előtti napon alapértelmezés szerint nem lehet éjszakás műszak */
+export const DEFAULT_BLOCKS_PREV_NIGHT = new Set(["SZ", "X", "O4", "O8"]);
+export const blocksPrevNight = (c?: CodeDef): boolean =>
+  !!c && c.category !== "work" && (c.blocksPreviousNight ?? DEFAULT_BLOCKS_PREV_NIGHT.has(c.code));
+
+export const DAY_NAMES = ["Vasárnap", "Hétfő", "Kedd", "Szerda", "Csütörtök", "Péntek", "Szombat"];
+
 export const DEFAULT_CODES: CodeDef[] = [
   { code: "7", name: "07:00-tól (nappal)", category: "work", hours: 12, start: 7, countsWork: true, countsAccounted: true, blocks: false, color: "day", description: "07:00–19:00, 12 óra (Excel: 7 × 12 óra)" },
   { code: "19", name: "19:00-tól (éjszaka)", category: "work", hours: 12, start: 19, countsWork: true, countsAccounted: true, blocks: false, color: "night", description: "19:00–07:00, 12 óra (Excel: 19 × 12 óra)" },
@@ -19,6 +32,7 @@ export const DEFAULT_CODES: CodeDef[] = [
   { code: "B", name: "Betegség", category: "sick", hours: 8, start: 0, countsWork: false, countsAccounted: true, blocks: true, color: "b", description: "Excel: Beteg órák = B × 8 óra; beleszámít az Összesenbe" },
   { code: "X", name: "Nem beosztható", category: "other", hours: 0, start: 0, countsWork: false, countsAccounted: false, blocks: true, color: "x", description: "Az Excel óraként nem számolja; a nap nem osztható be" },
   { code: "HO", name: "Egyéb távollét (HO)", category: "other", hours: 0, start: 0, countsWork: false, countsAccounted: false, blocks: true, color: "ho", description: "Az Excel óraként nem számolja – bérszámfejtési jelentését a rendszergazda állítsa be" },
+  ...EXTRA_CODES,
 ];
 
 export const DEFAULT_REQS: ReqRow[] = [
@@ -59,7 +73,7 @@ export function defaultConfig(): Config {
   };
 }
 
-const STATUS = new Set(["SZ", "B", "X", "HO"]);
+const STATUS = new Set(["SZ", "B", "X", "HO", "O4", "O8"]);
 export function initialState(): AppState {
   const sepAbs: Grid = {}, sepWork: Grid = {};
   for (const [id, row] of Object.entries(SEED_SEPT_2026)) {
