@@ -1,6 +1,6 @@
 import type { AppState, CodeCategory, CodeDef, Config, DayType, ReqRow, RuleType } from "@/lib/roster/types";
 import { MONTHS, autoMonthTarget, monthKey } from "@/lib/roster/calendar";
-import { COLOR_KEYS, GROUPS, GROUP_LABEL, RULE_TYPE_LABEL } from "@/lib/roster/defaults";
+import { COLOR_KEYS, GROUPS, GROUP_LABEL, RULE_TYPE_LABEL, blocksPrevNight } from "@/lib/roster/defaults";
 import { frameMonths } from "@/lib/roster/engine";
 import { CodeBadge } from "./RosterTable";
 
@@ -16,7 +16,10 @@ export function SettingsTab({ state, onConfig, onReset }: { state: AppState; onC
     { type: "LEGAL_HARD", name: "Napi pihenőidő", body: <span>legalább <Num v={cfg.minRest} on={(v) => set({ minRest: v })} /> óra két műszak között (éjszaka után másnap nincs 07:00-s kezdés)</span> },
     { type: "LEGAL_HARD", name: "Egymást követő munkanapok", body: <span>legfeljebb <Num v={cfg.maxConsecLegal} on={(v) => set({ maxConsecLegal: v })} /> nap egymás után (egyenlőtlen beosztásnál 6 munkanap után heti pihenőnap)</span> },
     { type: "LEGAL_HARD", name: "Műszakhossz", body: <span>legfeljebb 12 óra / műszak (a kódtáblában beállítva)</span> },
-    { type: "AVAILABILITY", name: "Jóváhagyott távollét", body: <span>SZ / B / X / HO napokra soha nem kerül műszak</span> },
+    { type: "AVAILABILITY", name: "Jóváhagyott távollét", body: <span>{cfg.codes.filter((c) => c.category !== "work").map((c) => c.code).join(" / ")} napokra soha nem kerül műszak</span> },
+    { type: "AVAILABILITY", name: "Nincs éjszaka távollét előtt", body: <span>{cfg.codes.filter((c) => blocksPrevNight(c)).map((c) => c.code).join(" / ") || "–"} előtti napon nem lehet 19:00-s éjszakás műszak (hónaphatáron át is) – a kódtáblában állítható</span> },
+    { type: "AVAILABILITY", name: "Egyéni beosztási szabályok", body: <span>{state.employees.reduce((a, e) => a + (e.restrictions ?? []).filter((r) => r.enabled).length, 0)} állandó tiltás – a „Dolgozók” fülön, dolgozónként szerkeszthető</span> },
+    { type: "COMPANY_HARD", name: "Kézzel beírt műszak", body: <span>automatikusan zárolódik, új változat generálásakor változatlanul megmarad (a cellára kattintva feloldható)</span> },
     { type: "COMPANY_HARD", name: "Összeférhetetlen párok", body: <span>{cfg.conflicts.length} pár – a „Dolgozók” fülön szerkeszthető</span> },
     { type: "COMPANY_HARD", name: "Csoport-jogosultság", body: <span>mindenki csak a saját csoportjában osztható be</span> },
     { type: "STAFFING", name: "Napi létszámigény", body: <span>lásd a lenti táblázatot</span> },
@@ -25,7 +28,7 @@ export function SettingsTab({ state, onConfig, onReset }: { state: AppState; onC
         lehetőleg max. <Num v={cfg.preferMaxConsec.value} on={(v) => set({ preferMaxConsec: { ...cfg.preferMaxConsec, value: v } })} /> egymás után – csak pontozást befolyásol, nem tiltás</span>
     ) },
     { type: "FAIRNESS", name: "Munkaidőkeret-egyenleg", body: <span>a keret feletti óra túlóraként jelenik meg; a generátor a kerethez legközelebb eső dolgozót részesíti előnyben</span> },
-    { type: "FAIRNESS", name: "Éjszaka / szombat / vasárnap / ünnepnap", body: <span>kéthavi (előzményekkel számolt) kiegyenlítés</span> },
+    { type: "FAIRNESS", name: "Éjszaka / szombat / vasárnap / ünnepnap", body: <span>kéthavi (előzményekkel számolt) kiegyenlítés; az éjszakák a dolgozó elérhetősége (távollét, egyéni tiltás) arányában oszlanak el</span> },
   ];
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -97,7 +100,7 @@ export function SettingsTab({ state, onConfig, onReset }: { state: AppState; onC
         <h2 className="font-display mb-3 text-xl font-bold">Kódtábla (műszak- és státuszkódok)</h2>
         <table className="w-full text-sm">
           <thead className="text-xs text-muted-foreground">
-            <tr><th className="text-left">Kód</th><th className="text-left">Név</th><th>Típus</th><th>Óra</th><th>Kezdés</th><th>Munkaidő</th><th>Elszámolt</th><th>Tiltja a beosztást</th><th>Szín</th><th className="text-left">Leírás</th></tr>
+            <tr><th className="text-left">Kód</th><th className="text-left">Név</th><th>Típus</th><th>Óra</th><th>Kezdés</th><th>Munkaidő</th><th>Elszámolt</th><th>Tiltja a beosztást</th><th>Előtte nincs éjszaka</th><th>Szín</th><th className="text-left">Leírás</th></tr>
           </thead>
           <tbody>
             {cfg.codes.map((c) => (
@@ -114,6 +117,7 @@ export function SettingsTab({ state, onConfig, onReset }: { state: AppState; onC
                 <td className="text-center"><input type="checkbox" checked={c.countsWork} onChange={(e) => setCode(c, { countsWork: e.target.checked })} /></td>
                 <td className="text-center"><input type="checkbox" checked={c.countsAccounted} onChange={(e) => setCode(c, { countsAccounted: e.target.checked })} /></td>
                 <td className="text-center">{c.category === "work" ? "–" : "IGEN"}</td>
+                <td className="text-center">{c.category === "work" ? "–" : <input type="checkbox" checked={blocksPrevNight(c)} onChange={(e) => setCode(c, { blocksPreviousNight: e.target.checked })} aria-label={`${c.code}: előtte nincs éjszaka`} />}</td>
                 <td>
                   <select value={c.color} onChange={(e) => setCode(c, { color: e.target.value })} className="pill px-2">
                     {COLOR_KEYS.map((k) => <option key={k}>{k}</option>)}

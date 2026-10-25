@@ -3,6 +3,15 @@ export type Pattern = "shift" | "fixed8";
 export type Kind = "D" | "E"; // nappal / éjszaka
 export type DayType = "wd" | "sat" | "sun";
 
+/** Állandó, ismétlődő egyéni tiltás: a hét adott napján adott műszaktípus nem osztható be */
+export interface Restriction {
+  id: string;
+  /** 0 = vasárnap … 6 = szombat */
+  dow: number;
+  kind: Kind;
+  enabled: boolean;
+}
+
 export interface Employee {
   id: string;
   name: string;
@@ -12,6 +21,8 @@ export interface Employee {
   leaveBalance: number;
   pattern: Pattern;
   active: boolean;
+  /** Egyéni beosztási szabályok (régi mentésben hiányozhat) */
+  restrictions?: Restriction[];
 }
 
 export type CodeCategory = "work" | "leave" | "sick" | "other";
@@ -29,6 +40,9 @@ export interface CodeDef {
   blocks: boolean;
   color: string; // színkulcs, pl. "day"
   description: string;
+  /** Ha a távollét D napon van, D−1 napon nem lehet 19:00-s éjszakás műszak.
+   *  Hiányzó érték esetén: SZ, X, O4, O8 = igen, a többi = nem. */
+  blocksPreviousNight?: boolean;
 }
 
 export interface ReqRow {
@@ -74,6 +88,8 @@ export interface Draft {
   createdAt: number;
   cells: Grid;
   why: Record<string, string[]>; // `${empId}-${day}`
+  /** Kézzel beírt, zárolt műszakok: `${empId}-${day}` -> true (régi tervezetben hiányzik) */
+  locked?: Record<string, boolean>;
 }
 
 export interface MonthData {
@@ -87,4 +103,6 @@ export interface AppState {
   employees: Employee[];
   config: Config;
   months: Record<string, MonthData>;
+  /** Már lefutott egyszeri adatbővítések azonosítói */
+  migrations?: string[];
 }

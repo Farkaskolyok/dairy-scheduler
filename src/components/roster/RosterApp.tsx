@@ -13,6 +13,7 @@ import {
   frameStats,
   generate,
   hasMonthData,
+  lockedCells,
   monthStats,
   targetOf,
   validate,
@@ -56,7 +57,7 @@ export function RosterApp() {
   const stats = useMemo(() => monthStats(state, year, month, grid), [state, year, month, grid]);
   const frame = useMemo(() => frameStats(state, year, month, grid), [state, year, month, grid]);
   const cov = useMemo(() => coverage(state, year, month, grid), [state, year, month, grid]);
-  const val = useMemo(() => validate(state, year, month, grid), [state, year, month, grid]);
+  const val = useMemo(() => validate(state, year, month, grid, draft), [state, year, month, grid, draft]);
   const cmp = useMemo(() => compareDrafts(state, year, month), [state, year, month]);
   const n = daysIn(year, month);
   const days = Array.from({ length: n }, (_, i) => i + 1);
@@ -80,7 +81,7 @@ export function RosterApp() {
     setState((s) => {
       const cur = s.months[key];
       const cnt = (cur?.drafts ?? []).filter((d) => d.name.startsWith("TERVEZET")).length;
-      const d = generate(s, year, month, Date.now() % 100000, `TERVEZET ${cnt + 1}`);
+      const d = generate(s, year, month, Date.now() % 100000, `TERVEZET ${cnt + 1}`, lockedCells(activeDraft(cur)));
       return withMonth(s, key, (m) => ({ ...m, drafts: [...m.drafts, d], activeId: d.id }));
     });
     setTab("plan");
@@ -115,11 +116,25 @@ export function RosterApp() {
           if (isWorkCode && code) row[d] = code;
           const why = { ...dr.why };
           delete why[`${id}-${d}`];
-          return { ...dr, cells: { ...dr.cells, [id]: row }, why };
+          const locked = { ...(dr.locked ?? {}) };
+          delete locked[`${id}-${d}`];
+          if (isWorkCode && code) locked[`${id}-${d}`] = true;
+          return { ...dr, cells: { ...dr.cells, [id]: row }, why, locked };
         });
         return { ...m, absences, drafts, activeId };
       });
     });
+
+  const toggleLock = (id: string, d: number) =>
+    setState((s) => withMonth(s, key, (m) => ({
+      ...m,
+      drafts: m.drafts.map((dr) => {
+        if (dr.id !== m.activeId || !dr.cells[id]?.[d]) return dr;
+        const locked = { ...(dr.locked ?? {}) };
+        if (locked[`${id}-${d}`]) delete locked[`${id}-${d}`]; else locked[`${id}-${d}`] = true;
+        return { ...dr, locked };
+      }),
+    })));
 
   const setAbsence = (id: string, ds: number[], code: string | null) =>
     setState((s) =>
@@ -389,6 +404,7 @@ export function RosterApp() {
               issues={val.issues}
               onSet={setCell}
               onOpenEmp={setEmpOpen}
+              onToggleLock={toggleLock}
             />
 
             <div className="mt-4 flex flex-wrap gap-4 text-sm">
