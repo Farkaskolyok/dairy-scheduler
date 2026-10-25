@@ -666,8 +666,8 @@ export function compareDrafts(state: AppState, y: number, m: number) {
     const plus = emps.reduce((a, e) => a + Math.max(0, fs[e.id].twoMonthBalance), 0);
     const kesz = emps.filter((e) => e.group === "kesz" && e.pattern === "shift");
     const spread = (f: (s: MStats) => number) => { const v = kesz.map((e) => f(fs[e.id].cum)); return v.length ? Math.max(...v) - Math.min(...v) : 0; };
-    const v = validate(state, y, m, g);
+    const v = validate(state, y, m, g, d);
     const warns = v.sections.reduce((a, s) => a + s.items.filter((i) => i.level !== "ok").length, 0);
-    return { id: d.id, name: d.name, missing, plus, nightSpread: spread((s) => s.night), weekendSpread: spread((s) => s.sat + s.sun), warns };
+    return { id: d.id, name: d.name, locks: Object.keys(lockedCells(d)).length ? Object.values(lockedCells(d)).reduce((a, r) => a + Object.keys(r).length, 0) : 0, missing, plus, nightSpread: spread((s) => s.night), weekendSpread: spread((s) => s.sat + s.sun), warns };
   });
 }
