@@ -473,7 +473,7 @@ export function generate(state: AppState, y: number, m: number, seed: number, na
           const xw = why[`${X.id}-${d}`], tw = why[`${T.id}-${d}`];
           unassign(X.id, d); unassign(T.id, d);
           assign(T.id, d, xc, fixWhy(T.id)); assign(X.id, d, tc, tw ?? []);
-          if (valid(T, d) && valid(X, d) && valid(T, d - 1 >= 1 ? d - 1 : d) && valid(X, d + 1 <= n && cur[X.id][d + 1] ? d + 1 : d)) { moved = true; break outer; }
+          if (valid(T, d) && valid(X, d)) { moved = true; break outer; }
           unassign(T.id, d); unassign(X.id, d);
           assign(X.id, d, xc, xw ?? []); assign(T.id, d, tc, tw ?? []);
         } else if (!tc && need(T.id) > need(X.id)) {
