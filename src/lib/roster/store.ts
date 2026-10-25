@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { AppState, MonthData } from "./types";
-import { initialState } from "./defaults";
+import { initialState, migrate } from "./defaults";
 
 const KEY = "potty-beosztas-v2";
 
@@ -12,7 +12,7 @@ export function useRosterState() {
       const raw = localStorage.getItem(KEY);
       if (raw) {
         const p = JSON.parse(raw) as AppState;
-        if (p.version === 2) setState(p);
+        if (p.version === 2) setState(migrate(p));
       }
     } catch { /* hibás mentés – alapállapot */ }
     setLoaded(true);

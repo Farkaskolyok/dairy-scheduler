@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Lock, LockOpen } from "lucide-react";
 import type { AppState, Draft, Grid } from "@/lib/roster/types";
 import { DOW, daysIn, dowOf, isHoliday, nextMonth, prevMonth } from "@/lib/roster/calendar";
 import { COV_ROWS, checkCell, codeMap, makeLookup, type CovCell, type FrameInfo, type MStats } from "@/lib/roster/engine";
@@ -12,13 +13,21 @@ interface Props {
   cov: Record<string, Record<number, CovCell>>; issues: Set<string>;
   onSet: (id: string, d: number, code: string | null) => void;
   onOpenEmp: (id: string) => void;
+  onToggleLock: (id: string, d: number) => void;
 }
 
-export function CodeBadge({ code, color, bad }: { code: string; color: string; bad?: boolean }) {
-  return <span className={`shift-code code-${color} ${bad ? "ring-2 ring-destructive ring-offset-1" : ""}`}>{code}</span>;
+export function CodeBadge({ code, color, bad, locked }: { code: string; color: string; bad?: boolean; locked?: boolean }) {
+  const badge = <span className={`shift-code code-${color} ${bad ? "ring-2 ring-destructive ring-offset-1" : ""}`}>{code}</span>;
+  if (!locked) return badge;
+  return (
+    <span className="relative inline-flex" title="Kézzel beírt, zárolt műszak – új változatnál megmarad">
+      {badge}
+      <Lock className="absolute -right-1.5 -top-1.5 h-3 w-3 rounded-full bg-card p-[1px] text-foreground print:hidden" aria-label="zárolt" />
+    </span>
+  );
 }
 
-export function RosterTable({ state, y, m, grid, draft, stats, frame, cov, issues, onSet, onOpenEmp }: Props) {
+export function RosterTable({ state, y, m, grid, draft, stats, frame, cov, issues, onSet, onOpenEmp, onToggleLock }: Props) {
   const cm = useMemo(() => codeMap(state.config), [state.config]);
   const n = daysIn(y, m);
   const [py, pm] = prevMonth(y, m), [ny, nm] = nextMonth(y, m);
@@ -88,7 +97,8 @@ export function RosterTable({ state, y, m, grid, draft, stats, frame, cov, issue
                               onClick={(ev) => { const r = ev.currentTarget.getBoundingClientRect(); setMenu({ id: e.id, d: c.d, x: r.left, y: r.bottom }); }}
                               aria-label={`${e.name} ${c.d}. nap`}
                             >
-                              {code && <CodeBadge code={code} color={def?.color ?? "other"} bad={issues.has(`${e.id}-${c.d}`)} />}
+                              {code && <CodeBadge code={code} color={def?.color ?? "other"} bad={issues.has(`${e.id}-${c.d}`)}
+                                locked={!!draft?.locked?.[`${e.id}-${c.d}`] && draft.cells[e.id]?.[c.d] === code} />}
                             </button>
                           )}
                         </td>
@@ -133,7 +143,8 @@ export function RosterTable({ state, y, m, grid, draft, stats, frame, cov, issue
 
       {menu && (
         <CellMenu state={state} y={y} m={m} grid={grid} draft={draft} at={menu} onClose={() => setMenu(null)}
-          onPick={(code) => { onSet(menu.id, menu.d, code); setMenu(null); }} />
+          onPick={(code) => { onSet(menu.id, menu.d, code); setMenu(null); }}
+          onToggleLock={() => { onToggleLock(menu.id, menu.d); setMenu(null); }} />
       )}
       {pop && (() => {
         const cc = cov[pop.row]?.[pop.d];
@@ -165,19 +176,31 @@ function Floating({ x, y, onClose, children }: { x: number; y: number; onClose: 
   );
 }
 
-function CellMenu({ state, y, m, grid, draft, at, onClose, onPick }: {
+function CellMenu({ state, y, m, grid, draft, at, onClose, onPick, onToggleLock }: {
   state: AppState; y: number; m: number; grid: Grid; draft: Draft | null;
   at: { id: string; d: number; x: number; y: number }; onClose: () => void; onPick: (code: string | null) => void;
+  onToggleLock: () => void;
 }) {
   const emp = state.employees.find((e) => e.id === at.id);
   const cur = grid[at.id]?.[at.d];
   const why = draft?.why[`${at.id}-${at.d}`];
   const [showWhy, setShowWhy] = useState(false);
+  const draftCode = draft?.cells[at.id]?.[at.d];
+  const isLocked = !!draftCode && !!draft?.locked?.[`${at.id}-${at.d}`];
   const labelOf = (c: { code: string; name: string; category: string }) =>
     c.code === "7" ? "07:00" : c.code === "19" ? "19:00" : c.category === "work" ? `${c.code} óra` : c.code;
   return (
     <Floating x={at.x} y={at.y} onClose={onClose}>
       <div className="mb-2 text-xs font-bold">{emp?.name} – {m + 1}.{String(at.d).padStart(2, "0")}.</div>
+      {draftCode && draftCode === cur && (
+        <button onClick={onToggleLock} className="mb-2 flex w-full items-center gap-2 rounded-lg bg-muted p-1.5 text-left text-xs hover:bg-accent">
+          {isLocked ? <Lock className="h-3.5 w-3.5" /> : <LockOpen className="h-3.5 w-3.5" />}
+          <span className="flex-1">
+            {isLocked ? <><b>Zárolva</b> – új változatnál megmarad. <span className="text-primary underline">Feloldás</span></>
+              : <><b>Nem zárolt</b> – új változatnál újratervezhető. <span className="text-primary underline">Zárolás</span></>}
+          </span>
+        </button>
+      )}
       {why && cur && (
         <div className="mb-2">
           <button className="text-xs font-semibold text-primary underline" onClick={() => setShowWhy((v) => !v)}>Miért ő?</button>
