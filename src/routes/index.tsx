@@ -4,7 +4,7 @@ import type { Draft, Employee, Group } from "@/lib/roster/types";
 import { MONTHS, MONTH_ADJ, daysIn, isHoliday, monthKey } from "@/lib/roster/calendar";
 import { GROUP_LABEL, initialState } from "@/lib/roster/defaults";
 import {
-  activeDraft, codeMap, compareDrafts, coverage, effGrid, frameMonths, frameStats, generate, hasMonthData, monthStats, targetOf, validate,
+  activeDraft, codeMap, compareDrafts, coverage, effGrid, frameMonths, frameStats, generate, hasMonthData, lockedCells, monthStats, targetOf, validate,
 } from "@/lib/roster/engine";
 import { useRosterState, withMonth } from "@/lib/roster/store";
 import { RosterTable, CodeBadge } from "@/components/roster/RosterTable";
@@ -46,7 +46,7 @@ function Index() {
   const stats = useMemo(() => monthStats(state, year, month, grid), [state, year, month, grid]);
   const frame = useMemo(() => frameStats(state, year, month, grid), [state, year, month, grid]);
   const cov = useMemo(() => coverage(state, year, month, grid), [state, year, month, grid]);
-  const val = useMemo(() => validate(state, year, month, grid), [state, year, month, grid]);
+  const val = useMemo(() => validate(state, year, month, grid, draft), [state, year, month, grid, draft]);
   const cmp = useMemo(() => compareDrafts(state, year, month), [state, year, month]);
   const n = daysIn(year, month);
   const days = Array.from({ length: n }, (_, i) => i + 1);
@@ -67,7 +67,8 @@ function Index() {
     setState((s) => {
       const cur = s.months[key];
       const cnt = (cur?.drafts ?? []).filter((d) => d.name.startsWith("TERVEZET")).length;
-      const d = generate(s, year, month, Date.now() % 100000, `TERVEZET ${cnt + 1}`);
+      // a jelenleg aktív tervezet kézzel zárolt műszakjai fix kényszerként öröklődnek
+      const d = generate(s, year, month, Date.now() % 100000, `TERVEZET ${cnt + 1}`, lockedCells(activeDraft(cur)));
       return withMonth(s, key, (m) => ({ ...m, drafts: [...m.drafts, d], activeId: d.id }));
     });
     setTab("plan");
@@ -94,11 +95,26 @@ function Index() {
           if (isWorkCode && code) row[d] = code;
           const why = { ...dr.why };
           delete why[`${id}-${d}`];
-          return { ...dr, cells: { ...dr.cells, [id]: row }, why };
+          // kézi munkakód = automatikusan zárolt; törlés / távollét = zárolás megszűnik
+          const locked = { ...(dr.locked ?? {}) };
+          delete locked[`${id}-${d}`];
+          if (isWorkCode && code) locked[`${id}-${d}`] = true;
+          return { ...dr, cells: { ...dr.cells, [id]: row }, why, locked };
         });
         return { ...m, absences, drafts, activeId };
       });
     });
+
+  const toggleLock = (id: string, d: number) =>
+    setState((s) => withMonth(s, key, (m) => ({
+      ...m,
+      drafts: m.drafts.map((dr) => {
+        if (dr.id !== m.activeId || !dr.cells[id]?.[d]) return dr;
+        const locked = { ...(dr.locked ?? {}) };
+        if (locked[`${id}-${d}`]) delete locked[`${id}-${d}`]; else locked[`${id}-${d}`] = true;
+        return { ...dr, locked };
+      }),
+    })));
 
   const setAbsence = (id: string, ds: number[], code: string | null) =>
     setState((s) => withMonth(s, key, (m) => {
@@ -199,7 +215,7 @@ function Index() {
             <h2 className="font-display mb-2 hidden text-2xl font-bold print:block">Beosztás – {year}. {MONTHS[month]}</h2>
             {!draft && <p className="mb-2 text-sm text-muted-foreground print:hidden">Még nincs beosztás erre a hónapra – a rögzített távollétek látszanak. Nyomd meg a „{cap(adj)} beosztás generálása” gombot, vagy kattints egy cellára a kézi beosztáshoz.</p>}
             <RosterTable state={state} y={year} m={month} grid={grid} draft={draft} stats={stats} frame={frame} cov={cov} issues={val.issues}
-              onSet={setCell} onOpenEmp={setEmpOpen} />
+              onSet={setCell} onOpenEmp={setEmpOpen} onToggleLock={toggleLock} />
 
             <div className="mt-4 flex flex-wrap gap-4 text-sm">
               {state.config.codes.map((c) => (

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { MonthData } from "@/lib/roster/types";
 
-export interface DraftCmp { id: string; name: string; missing: number; plus: number; nightSpread: number; weekendSpread: number; warns: number }
+export interface DraftCmp { id: string; name: string; locks: number; missing: number; plus: number; nightSpread: number; weekendSpread: number; warns: number }
 
 export function DraftsBar({ md, cmp, onActivate, onDelete }: {
   md: MonthData | undefined; cmp: DraftCmp[]; onActivate: (id: string) => void; onDelete: (id: string) => void;
@@ -16,7 +16,7 @@ export function DraftsBar({ md, cmp, onActivate, onDelete }: {
           const act = d.id === md.activeId;
           return (
             <span key={d.id} className={`flex items-center gap-1 rounded-full border px-1 py-1 ${act ? "border-primary bg-accent" : ""}`}>
-              <span className="px-2 text-sm font-semibold">{d.name}{act && " ●"}</span>
+              <span className="px-2 text-sm font-semibold">{d.name}{act && " ●"}{(() => { const k = cmp.find((c) => c.id === d.id)?.locks ?? 0; return k ? <span className="ml-1 text-xs font-normal text-muted-foreground" title="kézzel zárolt műszakok">🔒{k}</span> : null; })()}</span>
               {!act && <button onClick={() => onActivate(d.id)} className="rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-primary-foreground">Aktiválás</button>}
               <button onClick={() => { if (confirm(`Törlöd: ${d.name}?`)) onDelete(d.id); }} className="rounded-full px-2 py-0.5 text-xs text-muted-foreground hover:text-destructive" aria-label="Törlés">✕</button>
             </span>
