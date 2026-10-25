@@ -146,7 +146,7 @@ function RestrictionEditor({ list, onChange }: { list: Restriction[]; onChange: 
   const set = (id: string, p: Partial<Restriction>) => onChange(list.map((r) => (r.id === id ? { ...r, ...p } : r)));
   const active = list.filter((r) => r.enabled).length;
   return (
-    <details className="mt-2 rounded-xl bg-card p-2 text-xs" open={list.length > 0 ? undefined : false}>
+    <details className="mt-2 rounded-xl bg-card p-2 text-xs">
       <summary className="cursor-pointer font-semibold">
         Egyéni beosztási szabályok {active ? <span className="ml-1 rounded-full bg-accent px-1.5 text-accent-foreground">{active} tiltás</span> : <span className="text-muted-foreground">(nincs)</span>}
       </summary>
