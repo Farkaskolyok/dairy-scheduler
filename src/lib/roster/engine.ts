@@ -1,7 +1,7 @@
 // @ts-nocheck -- index-heavy algorithm, types checked at API boundary
 import type { AppState, CodeDef, Config, DayType, Draft, Employee, Grid, Group, Kind, MonthData } from "./types";
 import { autoMonthTarget, daysIn, dowOf, isHoliday, monthKey, nextMonth, parseYM, prevMonth } from "./calendar";
-import { GROUP_LABEL } from "./defaults";
+import { DAY_NAMES, GROUP_LABEL, blocksPrevNight } from "./defaults";
 
 export const codeMap = (cfg: Config): Record<string, CodeDef> => Object.fromEntries(cfg.codes.map((c) => [c.code, c]));
 export const dayTypeOf = (dow: number): DayType => (dow === 0 ? "sun" : dow === 6 ? "sat" : "wd");
@@ -69,6 +69,58 @@ export function restIssue(look: Look, cm, cfg: Config, id: string, d: number, co
   return null;
 }
 
+/** AVAILABILITY: D napi 19:00-s éjszaka nem lehet, ha D+1-en „előző éjszakát tiltó” távollét (pl. SZ, X, O4, O8) van – hónaphatáron át is */
+export function prevNightIssue(look: Look, cm, id: string, d: number, code: string): string | null {
+  const c = cm[code];
+  if (!isWork(c) || kindOf(c) !== "E") return null;
+  const nx = look(id, d + 1);
+  return blocksPrevNight(cm[nx]) ? `másnapra ${nx} távollét van rögzítve, előtte nem lehet 19:00-s éjszakás műszak` : null;
+}
+
+/** AVAILABILITY: a dolgozó állandó egyéni tiltásai (hét napja + nappal/éjszaka) */
+export function restrictionIssue(emp: Employee | undefined, y: number, m: number, d: number, code: string, cm): string | null {
+  const c = cm[code];
+  if (!isWork(c) || !emp?.restrictions?.length) return null;
+  const dow = dowOf(y, m, d), kind = kindOf(c);
+  const hit = emp.restrictions.find((r) => r.enabled && r.dow === dow && r.kind === kind);
+  return hit ? `egyéni beosztási szabály – ${DAY_NAMES[dow].toLowerCase()} ${kind === "E" ? "éjszaka" : "nappal"} tiltva` : null;
+}
+
+function absAt(state: AppState, y: number, m: number, id: string, d: number): string | undefined {
+  const n = daysIn(y, m);
+  if (d > n) { const [ny, nm] = nextMonth(y, m); return state.months[monthKey(ny, nm)]?.absences[id]?.[d - n]; }
+  return state.months[monthKey(y, m)]?.absences[id]?.[d];
+}
+
+/** Hány napon lehetett volna a dolgozót éjszakára beosztani (igény van, nincs távollét, egyéni tiltás vagy másnapi tiltó távollét) */
+export function nightEligible(state: AppState, y: number, m: number, emp: Employee): number {
+  if (!emp.active || emp.pattern !== "shift") return 0;
+  const cm = codeMap(state.config), n = daysIn(y, m);
+  let c = 0;
+  for (let d = 1; d <= n; d++) {
+    const dow = dowOf(y, m, d);
+    if (!reqCount(state.config, emp.group, dow, "E")) continue;
+    if (absAt(state, y, m, emp.id, d)) continue;
+    if (emp.restrictions?.some((r) => r.enabled && r.dow === dow && r.kind === "E")) continue;
+    if (blocksPrevNight(cm[absAt(state, y, m, emp.id, d + 1)])) continue;
+    c++;
+  }
+  return c;
+}
+
+/** A keret elejétől a kiválasztott hónapig tartó hónapok (ha a hónap nincs a keretben: csak ő) */
+function framePrefix(cfg: Config, y: number, m: number): [number, number][] {
+  const fm = frameMonths(cfg), idx = fm.findIndex(([a, b]) => a === y && b === m);
+  return idx >= 0 ? fm.slice(0, idx + 1) : [[y, m]];
+}
+export function nightEligibleCum(state: AppState, y: number, m: number, emp: Employee): number {
+  return framePrefix(state.config, y, m).reduce((a, [yy, mm]) => a + nightEligible(state, yy, mm, emp), 0);
+}
+/** Elérhetőséghez igazított várható éjszakaszám: összes éjszaka × saját elérhetőség / csoport elérhetősége */
+export function expectedShare(total: number, elig: number, sumElig: number) {
+  return sumElig > 0 ? (total * elig) / sumElig : 0;
+}
+
 export function runBefore(look: Look, cm, id: string, d: number) {
   let c = 0; for (let k = d - 1; k > d - 15 && isWork(cm[look(id, k)]); k--) c++; return c;
 }
@@ -94,7 +146,14 @@ export function groupKinds(cfg: Config, g: Group): Set<Kind> {
 export function checkCell(state: AppState, y: number, m: number, grid: Grid, id: string, d: number, code: string): string[] {
   const cfg = state.config, cm = codeMap(cfg), c = cm[code];
   const emp = state.employees.find((e) => e.id === id);
-  if (!c || !emp || !isWork(c)) return [];
+  if (!c || !emp) return [];
+  if (!isWork(c)) {
+    // távollét beírása egy már meglévő éjszaka utáni napra
+    if (!blocksPrevNight(c)) return [];
+    const look0 = makeLookup(state, y, m, grid);
+    const p = look0(id, d - 1), pc = cm[p];
+    return isWork(pc) && kindOf(pc) === "E" ? [`Nem megfelelő: előző nap 19:00-s éjszakás műszak (${p}) van, ${code} előtt ez nem megengedett.`] : [];
+  }
   const out: string[] = [];
   const abs = state.months[monthKey(y, m)]?.absences[id]?.[d];
   if (abs) out.push(`Nem megfelelő: erre a napra távollét (${abs}) van rögzítve.`);
@@ -104,6 +163,10 @@ export function checkCell(state: AppState, y: number, m: number, grid: Grid, id:
   const look = makeLookup(state, y, m, tmp);
   const r = restIssue(look, cm, cfg, id, d, code);
   if (r) out.push(`Nem megfelelő: ${r}.`);
+  const pn = prevNightIssue(look, cm, id, d, code);
+  if (pn) out.push(`Nem megfelelő: ${pn}.`);
+  const ri = restrictionIssue(emp, y, m, d, code, cm);
+  if (ri) out.push(`Nem megfelelő: ${ri}.`);
   const run = 1 + runBefore(look, cm, id, d) + runAfter(look, cm, id, d);
   if (run > cfg.maxConsecLegal) out.push(`Nem megfelelő: ${run} egymást követő munkanap (max. ${cfg.maxConsecLegal}).`);
   const p = conflictPartner(state, tmp, cm, id, d, kind);
@@ -211,13 +274,27 @@ export function coverage(state: AppState, y: number, m: number, grid: Grid): Rec
 
 /* ---------------- Generátor ---------------- */
 
-export function generate(state: AppState, y: number, m: number, seed: number, name: string): Draft {
+/** A tervezet zárolt (kézzel beírt) cellái rácsként */
+export function lockedCells(d: Draft | null | undefined): Grid {
+  const out: Grid = {};
+  if (!d?.locked) return out;
+  for (const k of Object.keys(d.locked)) {
+    if (!d.locked[k]) continue;
+    const i = k.lastIndexOf("-"), id = k.slice(0, i), day = +k.slice(i + 1);
+    const code = d.cells[id]?.[day];
+    if (code) (out[id] ??= {})[day] = code;
+  }
+  return out;
+}
+
+export function generate(state: AppState, y: number, m: number, seed: number, name: string, locked: Grid = {}): Draft {
   let r = (seed * 7919 + 12345) % 233280;
   const rand = () => ((r = (r * 9301 + 49297) % 233280) / 233280);
   const cfg = state.config, cm = codeMap(cfg), n = daysIn(y, m), key = monthKey(y, m);
   const abs = state.months[key]?.absences ?? {};
   const emps = state.employees.filter((e) => e.active);
   const cells: Grid = {}, why: Record<string, string[]> = {}, cur: Grid = {};
+  const lockMap: Record<string, boolean> = {};
   for (const e of state.employees) { cells[e.id] = {}; cur[e.id] = { ...(abs[e.id] ?? {}) }; }
   const look = makeLookup(state, y, m, cur);
 
@@ -245,16 +322,49 @@ export function generate(state: AppState, y: number, m: number, seed: number, na
   const SA = (id: string) => prior[id].sat + plan[id].sat;
   const SU = (id: string) => prior[id].sun + plan[id].sun;
   const HO = (id: string) => prior[id].hol + plan[id].hol;
-  const assign = (id: string, d: number, code: string, reasons: string[]) => {
+  const bump = (id: string, d: number, code: string, sign: 1 | -1) => {
     const c = cm[code];
-    cur[id][d] = code; cells[id][d] = code; why[`${id}-${d}`] = reasons;
-    plan[id].acc += c.countsAccounted ? c.hours : 0;
-    if (kindOf(c) === "E") plan[id].night++;
+    plan[id].acc += sign * (c.countsAccounted ? c.hours : 0);
+    if (kindOf(c) === "E") plan[id].night += sign;
     const dow = dowOf(y, m, d);
-    if (dow === 6) plan[id].sat++;
-    if (dow === 0) plan[id].sun++;
-    if (isHoliday(y, m, d)) plan[id].hol++;
+    if (dow === 6) plan[id].sat += sign;
+    if (dow === 0) plan[id].sun += sign;
+    if (isHoliday(y, m, d)) plan[id].hol += sign;
   };
+  const assign = (id: string, d: number, code: string, reasons: string[]) => {
+    cur[id][d] = code; cells[id][d] = code; why[`${id}-${d}`] = reasons;
+    bump(id, d, code, 1);
+  };
+  const unassign = (id: string, d: number) => {
+    const code = cells[id][d]; if (!code) return;
+    bump(id, d, code, -1);
+    delete cur[id][d]; delete cells[id][d]; delete why[`${id}-${d}`];
+  };
+
+  // 0) zárolt, kézzel beírt műszakok – fix kényszerként, változtatás nélkül
+  for (const [id, row] of Object.entries(locked)) {
+    if (!cells[id]) continue;
+    for (const [ds, code] of Object.entries(row)) {
+      const d = +ds;
+      if (!isWork(cm[code]) || d < 1 || d > n) continue;
+      lockMap[`${id}-${d}`] = true;
+      if (cur[id][d]) { cells[id][d] = code; why[`${id}-${d}`] = ["kézzel beírt, zárolt műszak (ütközik a rögzített távolléttel – ellenőrizd)"]; continue; }
+      assign(id, d, code, ["kézzel beírt, zárolt műszak – az új változat változatlanul megtartotta"]);
+    }
+  }
+
+  // éjszakai igazságosság: elérhetőséghez igazított várható éjszakaszám (kéthavi alapon)
+  const expN: Record<string, number> = {};
+  for (const g of ["kesz", "tej", "mikro"] as Group[]) {
+    if (!groupKinds(cfg, g).has("E")) continue;
+    const staff = emps.filter((e) => e.group === g && e.pattern === "shift");
+    const elig = Object.fromEntries(staff.map((e) => [e.id, nightEligibleCum(state, y, m, e)]));
+    const sumE = staff.reduce((a, e) => a + elig[e.id], 0);
+    let total = staff.reduce((a, e) => a + prior[e.id].night, 0);
+    for (let d = 1; d <= n; d++) total += reqCount(cfg, g, dowOf(y, m, d), "E");
+    for (const e of staff) expN[e.id] = expectedShare(total, elig[e.id], sumE);
+  }
+  const nDef = (id: string) => (expN[id] ?? 0) - N(id); // >0: kevesebb éjszakája van a várhatónál
 
   // 1) fix 8 órás munkarend (hétköznap, nem ünnep)
   const fixedCode = cfg.codes.find((c) => c.category === "work" && c.hours === 8)?.code;
@@ -263,35 +373,47 @@ export function generate(state: AppState, y: number, m: number, seed: number, na
       const dow = dowOf(y, m, d);
       if (dow === 0 || dow === 6 || isHoliday(y, m, d) || cur[e.id][d]) continue;
       if (restIssue(look, cm, cfg, e.id, d, fixedCode)) continue;
+      if (restrictionIssue(e, y, m, d, fixedCode, cm)) continue;
       assign(e.id, d, fixedCode, ["fix 8 órás munkarend (hétköznap)"]);
     }
   }
 
-  // 2) napi létszámigény, prioritási sorrendben
+  // közös kemény szűrő (a validáció ugyanezeket a függvényeket használja)
+  const canTake = (e: Employee, d: number, code: string, kind: Kind) => {
+    if (cur[e.id][d]) return false; // távollét vagy már beosztva
+    if (restIssue(look, cm, cfg, e.id, d, code)) return false;
+    if (prevNightIssue(look, cm, e.id, d, code)) return false;
+    if (restrictionIssue(e, y, m, d, code, cm)) return false;
+    if (1 + runBefore(look, cm, e.id, d) + runAfter(look, cm, e.id, d) > cfg.maxConsecLegal) return false;
+    if (conflictPartner(state, cur, cm, e.id, d, kind)) return false;
+    return true;
+  };
+  const kindCount = (staff: Employee[], d: number, kind: Kind) =>
+    staff.filter((e) => { const c = cm[cur[e.id][d]]; return isWork(c) && kindOf(c) === kind; }).length;
+
+  // 2) napi létszámigény, prioritási sorrendben (a zárolt műszakok már beleszámítanak)
   for (let d = 1; d <= n; d++) {
     const dow = dowOf(y, m, d), dt = dayTypeOf(dow), hol = isHoliday(y, m, d);
     for (const g of ["kesz", "tej", "mikro"] as Group[]) {
       const staff = emps.filter((e) => e.group === g && e.pattern === "shift");
       const rows = cfg.reqs.filter((q) => q.group === g && q.dayType === dt && q.count > 0 && cm[q.code]).sort((a, b) => (a.kind === "D" ? -1 : 1) - (b.kind === "D" ? -1 : 1));
+      const cumReq: Record<Kind, number> = { D: 0, E: 0 };
       for (const row of rows) {
         const code = row.code, c = cm[code], kind = kindOf(c);
-        for (let slot = 0; slot < row.count; slot++) {
-          const cands = staff.filter((e) => {
-            if (cur[e.id][d]) return false; // távollét vagy már beosztva
-            if (restIssue(look, cm, cfg, e.id, d, code)) return false;
-            if (1 + runBefore(look, cm, e.id, d) + runAfter(look, cm, e.id, d) > cfg.maxConsecLegal) return false;
-            if (conflictPartner(state, cur, cm, e.id, d, kind)) return false;
-            return true;
-          });
+        cumReq[kind] += row.count;
+        while (kindCount(staff, d, kind) < cumReq[kind]) {
+          const cands = staff.filter((e) => canTake(e, d, code, kind));
           if (!cands.length) break; // lefedetlen – a validáció jelzi
           const avg = (f: (id: string) => number) => staff.reduce((a, e) => a + f(e.id), 0) / Math.max(staff.length, 1);
-          const aN = avg(N), aSA = avg(SA), aSU = avg(SU), aHO = avg(HO);
+          const aSA = avg(SA), aSU = avg(SU), aHO = avg(HO);
           const score = (id: string) => {
             const nd = need(id);
             let s = (-nd / 12) * 10;
             if (nd - c.hours < 0) s += 20 + ((c.hours - nd) / 12) * 10; // keret feletti óra
-            if (kind === "E") s += (N(id) - aN) * 5;
-            else if (groupKinds(cfg, g).has("E")) s -= (N(id) - aN) * 1;
+            if (kind === "E") {
+              s -= nDef(id) * 6;
+              if (plan[id].night === 0 && (expN[id] ?? 0) >= 1) s -= 4; // ne maradjon éjszaka nélkül, aki beosztható
+            } else if (groupKinds(cfg, g).has("E")) s += nDef(id) * 1.5; // akinek éjszaka-hiánya van, azt éjszakára tartogatjuk
             if (dow === 6) s += (SA(id) - aSA) * 5;
             if (dow === 0) s += (SU(id) - aSU) * 5;
             if (hol) s += (HO(id) - aHO) * 7;
@@ -303,11 +425,11 @@ export function generate(state: AppState, y: number, m: number, seed: number, na
           };
           const scored = cands.map((e) => ({ e, s: score(e.id) })).sort((a, b) => a.s - b.s);
           const best = scored[0].e, others = scored.slice(1).map((x) => x.e.id);
-          const reasons = ["elérhető ezen a napon (nincs távollét)", "nincs pihenőidő-ütközés"];
+          const reasons = ["elérhető ezen a napon (nincs távollét, egyéni tiltás)", "nincs pihenőidő-ütközés"];
           if (cfg.conflicts.some((x) => x.a === best.id || x.b === best.id)) reasons.push("nincs összeférhetetlen párja ebben a műszakban");
           if (!others.length) reasons.push("egyedül ő volt beosztható erre a műszakra");
           else {
-            if (kind === "E" && others.every((o) => N(o) >= N(best.id))) reasons.push(`kevesebb éjszakás műszakja van a kéthavi időszakban (${N(best.id)} db)`);
+            if (kind === "E" && others.every((o) => nDef(o) <= nDef(best.id))) reasons.push(`elérhetőségéhez képest neki van a legkevesebb éjszakája a kéthavi időszakban (${N(best.id)} db, várható ~${Math.round(expN[best.id] ?? 0)})`);
             if (others.every((o) => need(o) <= need(best.id))) reasons.push(`óraszáma a legjobban elmarad a kerettől (még ${need(best.id)} óra a keretig)`);
             if (dow === 6 && others.every((o) => SA(o) >= SA(best.id))) reasons.push(`kevesebb szombatja van (${SA(best.id)})`);
             if (dow === 0 && others.every((o) => SU(o) >= SU(best.id))) reasons.push(`kevesebb vasárnapja van (${SU(best.id)})`);
@@ -320,7 +442,55 @@ export function generate(state: AppState, y: number, m: number, seed: number, na
       }
     }
   }
-  return { id: crypto.randomUUID(), name, createdAt: Date.now(), cells, why };
+
+  // 3) javító kör: éjszakák elérhetőség szerinti kiegyenlítése (zárolt cellákhoz nem nyúl)
+  const free = (id: string, d: number) => !lockMap[`${id}-${d}`] && !!cells[id][d];
+  const valid = (e: Employee, d: number) => {
+    const code = cur[e.id][d], c = cm[code];
+    if (restIssue(look, cm, cfg, e.id, d, code) || prevNightIssue(look, cm, e.id, d, code) || restrictionIssue(e, y, m, d, code, cm)) return false;
+    if (1 + runBefore(look, cm, e.id, d) + runAfter(look, cm, e.id, d) > cfg.maxConsecLegal) return false;
+    return !conflictPartner(state, cur, cm, e.id, d, kindOf(c));
+  };
+  const fixWhy = (id: string) => [
+    "elérhető ezen a napon (nincs távollét, egyéni tiltás)", "nincs pihenőidő-ütközés",
+    `igazságossági javítás: elérhetőségéhez képest kevés éjszakája volt (várható ~${Math.round(expN[id] ?? 0)} a kéthavi időszakban)`,
+  ];
+  for (const g of ["kesz", "tej", "mikro"] as Group[]) {
+    if (!groupKinds(cfg, g).has("E")) continue;
+    const staff = emps.filter((e) => e.group === g && e.pattern === "shift");
+    const tried = new Set<string>();
+    for (let iter = 0; iter < 80; iter++) {
+      const T = staff.filter((e) => !tried.has(e.id) && nDef(e.id) >= 1.5).sort((a, b) => nDef(b.id) - nDef(a.id))[0];
+      if (!T) break;
+      const Xs = staff.filter((e) => e.id !== T.id && nDef(T.id) - nDef(e.id) > 1.5).sort((a, b) => nDef(a.id) - nDef(b.id));
+      let moved = false;
+      outer: for (const X of Xs) for (let d = 1; d <= n && !moved; d++) {
+        const xc = cells[X.id][d], xcd = cm[xc];
+        if (!free(X.id, d) || !isWork(xcd) || kindOf(xcd) !== "E") continue;
+        const tc = cur[T.id][d];
+        if (tc && free(T.id, d) && isWork(cm[tc]) && kindOf(cm[tc]) === "D") {
+          // csere ugyanazon a napon: T éjszakára, X nappalra (óraszám, hétvége változatlan)
+          const xw = why[`${X.id}-${d}`], tw = why[`${T.id}-${d}`];
+          unassign(X.id, d); unassign(T.id, d);
+          assign(T.id, d, xc, fixWhy(T.id)); assign(X.id, d, tc, tw ?? []);
+          if (valid(T, d) && valid(X, d) && valid(T, d - 1 >= 1 ? d - 1 : d) && valid(X, d + 1 <= n && cur[X.id][d + 1] ? d + 1 : d)) { moved = true; break outer; }
+          unassign(T.id, d); unassign(X.id, d);
+          assign(X.id, d, xc, xw ?? []); assign(T.id, d, tc, tw ?? []);
+        } else if (!tc && need(T.id) > need(X.id)) {
+          // átadás: X éjszakáját T kapja (T jobban elmarad a kerettől)
+          const xw = why[`${X.id}-${d}`];
+          unassign(X.id, d);
+          assign(T.id, d, xc, fixWhy(T.id));
+          if (valid(T, d)) { moved = true; break outer; }
+          unassign(T.id, d);
+          assign(X.id, d, xc, xw ?? []);
+        }
+      }
+      if (!moved) tried.add(T.id);
+    }
+  }
+
+  return { id: crypto.randomUUID(), name, createdAt: Date.now(), cells, why, locked: lockMap };
 }
 
 /* ---------------- Validáció ---------------- */
