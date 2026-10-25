@@ -1,7 +1,7 @@
 import { useState } from "react";
-import type { AppState, Employee, Group, Pattern } from "@/lib/roster/types";
+import type { AppState, Employee, Group, Kind, Pattern, Restriction } from "@/lib/roster/types";
 import { MONTHS, daysIn } from "@/lib/roster/calendar";
-import { GROUPS, GROUP_LABEL } from "@/lib/roster/defaults";
+import { DAY_NAMES, GROUPS, GROUP_LABEL } from "@/lib/roster/defaults";
 import { CodeBadge } from "./RosterTable";
 
 interface Props {
@@ -53,6 +53,7 @@ export function StaffTab({ state, y, m, absences, onEmp, onAdd, onRemove, onAbse
               </label>
               <AbsenceEditor y={y} m={m} row={absences[e.id] ?? {}} codes={statusCodes.map((c) => c.code)} colorOf={colorOf}
                 onSet={(days, code) => onAbsence(e.id, days, code)} />
+              <RestrictionEditor list={e.restrictions ?? []} onChange={(restrictions) => onEmp(e.id, { restrictions })} />
             </div>
           ))}
           <button onClick={() => onAdd(g)} className="pill bg-secondary text-secondary-foreground">+ Dolgozó</button>
@@ -83,6 +84,8 @@ function AbsenceEditor({ y, m, row, codes, colorOf, onSet }: {
 }) {
   const [code, setCode] = useState(codes[0] ?? "SZ");
   const [txt, setTxt] = useState("");
+  const [editing, setEditing] = useState<number | null>(null);
+  const [note, setNote] = useState("");
   const n = daysIn(y, m);
   const parse = () => {
     const out: number[] = [];
@@ -93,24 +96,79 @@ function AbsenceEditor({ y, m, row, codes, colorOf, onSet }: {
     }
     return out.filter((d) => d >= 1 && d <= n);
   };
-  const byCode: Record<string, number[]> = {};
-  for (const [d, c] of Object.entries(row)) (byCode[c] ??= []).push(+d);
+  const add = () => {
+    const ds = parse();
+    // csak az új napok kerülnek be – a már rögzített napok változatlanok maradnak
+    const fresh = ds.filter((d) => !row[d]);
+    const kept = ds.length - fresh.length;
+    if (fresh.length) onSet(fresh, code);
+    setNote(kept ? `${kept} nap már rögzítve volt, az nem változott (egyenként módosítható).` : "");
+    setTxt("");
+  };
+  const days = Object.keys(row).map(Number).sort((a, b) => a - b);
   return (
     <div className="mt-2">
       <div className="text-xs text-muted-foreground">Távollét – {MONTHS[m]} (pl. 5,6,7 vagy 12-16)</div>
       <div className="mt-1 flex gap-1">
         <select value={code} onChange={(x) => setCode(x.target.value)} className="pill px-2">{codes.map((c) => <option key={c}>{c}</option>)}</select>
-        <input value={txt} onChange={(x) => setTxt(x.target.value)} className="pill min-w-0 flex-1" placeholder="napok" />
-        <button onClick={() => { onSet(parse(), code); setTxt(""); }} className="pill bg-primary text-primary-foreground">+</button>
+        <input value={txt} onChange={(x) => setTxt(x.target.value)} onKeyDown={(x) => { if (x.key === "Enter") add(); }} className="pill min-w-0 flex-1" placeholder="napok" />
+        <button onClick={add} className="pill bg-primary text-primary-foreground" aria-label="Távollét hozzáadása">+</button>
       </div>
+      {note && <div className="mt-1 text-xs text-warn-foreground">{note}</div>}
       <div className="mt-2 flex flex-wrap gap-1">
-        {Object.entries(byCode).map(([c, ds]) => (
-          <span key={c} className="flex items-center gap-1 rounded-full bg-card px-1 py-0.5 text-xs">
-            <CodeBadge code={c} color={colorOf(c)} /> {ds.sort((a, b) => a - b).join(", ")}
-            <button onClick={() => onSet(ds, null)} className="px-1 text-muted-foreground hover:text-destructive" aria-label={`${c} törlése`}>✕</button>
-          </span>
-        ))}
+        {days.map((d) => {
+          const c = row[d]!;
+          return (
+            <span key={d} className="flex items-center gap-1 rounded-full bg-card py-0.5 pl-2 pr-0.5 text-xs">
+              <b className="tabular-nums">{d}.</b>
+              {editing === d ? (
+                <select autoFocus value={c} onChange={(x) => { onSet([d], x.target.value); setEditing(null); }} onBlur={() => setEditing(null)}
+                  className="rounded-md border bg-card px-1 text-xs" aria-label={`${d}. nap kódja`}>
+                  {codes.map((k) => <option key={k}>{k}</option>)}
+                </select>
+              ) : (
+                <button onClick={() => setEditing(d)} className="flex items-center gap-0.5" aria-label={`${d}. nap módosítása`} title="Kód módosítása">
+                  <CodeBadge code={c} color={colorOf(c)} /><span className="text-muted-foreground">✎</span>
+                </button>
+              )}
+              <button onClick={() => onSet([d], null)} className="px-1 text-muted-foreground hover:text-destructive" aria-label={`${d}. nap törlése`}>✕</button>
+            </span>
+          );
+        })}
       </div>
     </div>
+  );
+}
+
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
+
+function RestrictionEditor({ list, onChange }: { list: Restriction[]; onChange: (l: Restriction[]) => void }) {
+  const set = (id: string, p: Partial<Restriction>) => onChange(list.map((r) => (r.id === id ? { ...r, ...p } : r)));
+  const active = list.filter((r) => r.enabled).length;
+  return (
+    <details className="mt-2 rounded-xl bg-card p-2 text-xs" open={list.length > 0 ? undefined : false}>
+      <summary className="cursor-pointer font-semibold">
+        Egyéni beosztási szabályok {active ? <span className="ml-1 rounded-full bg-accent px-1.5 text-accent-foreground">{active} tiltás</span> : <span className="text-muted-foreground">(nincs)</span>}
+      </summary>
+      <p className="mt-1 text-muted-foreground">Állandó tiltás minden hétre – a generátor ezekre soha nem osztja be, kézi beírásnál figyelmeztet.</p>
+      <div className="mt-1 space-y-1">
+        {list.map((r) => (
+          <div key={r.id} className="flex flex-wrap items-center gap-1">
+            <select value={r.dow} onChange={(x) => set(r.id, { dow: +x.target.value })} className="pill px-2 py-0.5" aria-label="Nap">
+              {WEEK_ORDER.map((d) => <option key={d} value={d}>{DAY_NAMES[d]}</option>)}
+            </select>
+            <select value={r.kind} onChange={(x) => set(r.id, { kind: x.target.value as Kind })} className="pill px-2 py-0.5" aria-label="Műszak">
+              <option value="D">Nappal (07:00)</option>
+              <option value="E">Éjszaka (19:00)</option>
+            </select>
+            <label className="flex items-center gap-1">
+              <input type="checkbox" checked={r.enabled} onChange={(x) => set(r.id, { enabled: x.target.checked })} /> Tiltva
+            </label>
+            <button onClick={() => onChange(list.filter((z) => z.id !== r.id))} className="px-1 text-muted-foreground hover:text-destructive" aria-label="Szabály törlése">✕</button>
+          </div>
+        ))}
+      </div>
+      <button onClick={() => onChange([...list, { id: crypto.randomUUID(), dow: 6, kind: "E", enabled: true }])} className="mt-1 text-primary underline">+ szabály</button>
+    </details>
   );
 }
